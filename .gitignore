@@ -1,0 +1,30 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
+
+# Jupyter Checkpoints
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Databases & Runtime State
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Temporary Checkpoints
+best_trading_dnn.pt
+*.pth
+
+# OS Metadata
+.DS_Store
+.DS_Store?
+._*
+.idea/
+.vscode/
