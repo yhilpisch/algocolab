@@ -26,7 +26,16 @@ def run_tick_server(
     ctx = zmq.Context()
     socket = ctx.socket(zmq.PUB)
     socket.setsockopt(zmq.LINGER, 0)
-    socket.bind(bind_addr)
+    try:
+        socket.bind(bind_addr)
+    except zmq.ZMQError as exc:
+        print(
+            f"[ZMQ Server Error] Address '{bind_addr}' is already in use.\n"
+            f"Please terminate any existing tick server instances."
+        )
+        socket.close(0)
+        ctx.term()
+        return
 
     price = start_price
     rng = np.random.default_rng()
