@@ -49,6 +49,54 @@ def load_eod_data(
     return prices
 
 
+def build_feature_vector(
+    prices_window: list[float] | np.ndarray,
+    lags: int = 5,
+    vol_window: int = 20,
+    mom_window: int = 10
+) -> np.ndarray:
+    """Extract canonical feature vector from a window of historical prices.
+
+    Ordering:
+      [lag_1, lag_2, ..., lag_p, rolling_vol, rolling_mom]
+    where lag_1 is the most recent historical return (r_{t-1}),
+    lag_p is the oldest return (r_{t-p}).
+
+    Parameters
+    ----------
+    prices_window : list of float or np.ndarray
+        Array of consecutive prices of length at least
+        max(vol_window, lags) + 2.
+    lags : int
+        Number of return lags.
+    vol_window : int
+        Rolling window size for return volatility.
+    mom_window : int
+        Rolling window size for return momentum.
+
+    Returns
+    -------
+    np.ndarray
+        Feature vector of length (lags + 2).
+    """
+    p_arr = np.asarray(prices_window, dtype=np.float64)
+    min_len = max(lags, vol_window, mom_window) + 2
+    if len(p_arr) < min_len:
+        raise ValueError(
+            f"Need at least {min_len} prices to compute features, "
+            f"got {len(p_arr)}"
+        )
+
+    log_rets = np.diff(np.log(p_arr))
+
+    # lag_1 is log_rets[-1], lag_2 is log_rets[-2], ..., lag_p is log_rets[-p]
+    lag_feats = [float(log_rets[-i]) for i in range(1, lags + 1)]
+    vol_feat = float(np.std(log_rets[-vol_window:], ddof=1))
+    mom_feat = float(np.mean(log_rets[-mom_window:]))
+
+    return np.array(lag_feats + [vol_feat, mom_feat], dtype=np.float32)
+
+
 def create_lagged_features(
     prices: pd.Series,
     lags: int = 5,
@@ -77,11 +125,11 @@ def create_lagged_features(
     Returns
     -------
     features : pd.DataFrame
-        Matrix of feature vectors $X_t$.
+        Matrix of feature vectors $X_t$ (known at $t-1$ close).
     returns : pd.Series
-        Actual next-period log-return $r_{t+1}$.
+        Actual next-period log-return $r_{t}$.
     direction : pd.Series
-        Binary classification target: 1 if $r_{t+1} > 0$, 0 otherwise.
+        Binary classification target: 1 if $r_{t} > 0$, 0 otherwise.
     """
     df = pd.DataFrame(index=prices.index)
     df["price"] = prices
@@ -94,11 +142,15 @@ def create_lagged_features(
         feature_cols.append(col_name)
 
     if include_volatility:
-        df["rolling_vol"] = df["return"].shift(1).rolling(vol_window).std()
+        df["rolling_vol"] = df["return"].shift(1).rolling(
+            vol_window, min_periods=vol_window
+        ).std(ddof=1)
         feature_cols.append("rolling_vol")
 
     if include_momentum:
-        df["rolling_mom"] = df["return"].shift(1).rolling(mom_window).mean()
+        df["rolling_mom"] = df["return"].shift(1).rolling(
+            mom_window, min_periods=mom_window
+        ).mean()
         feature_cols.append("rolling_mom")
 
     df["target_return"] = df["return"]

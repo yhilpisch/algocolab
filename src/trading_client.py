@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 
+from src.data import build_feature_vector
+
 
 class ProductionDNN(nn.Module):
     def __init__(
@@ -38,8 +40,9 @@ class ProductionDNN(nn.Module):
 
 
 class ZMQTradingClient:
-    """Consumes real-time ZeroMQ tick stream, computes rolling features,
-    executes PyTorch model inference, enforces risk limits, and persists state.
+    """Consumes real-time ZeroMQ tick stream, computes canonical features,
+    applies training standardization, performs PyTorch inference,
+    enforces risk limits, and persists state to SQLite.
     """
 
     def __init__(
@@ -47,6 +50,8 @@ class ZMQTradingClient:
         connect_addr: str = "tcp://127.0.0.1:5555",
         model: nn.Module | None = None,
         model_path: str = "best_trading_dnn.pt",
+        scaler_mean: np.ndarray | None = None,
+        scaler_scale: np.ndarray | None = None,
         initial_capital: float = 100_000.0,
         max_drawdown_limit: float = 0.10,
         tc_rate: float = 0.0005,
@@ -65,13 +70,31 @@ class ZMQTradingClient:
         self.prices: list[float] = []
         self.timestamps: list[str] = []
 
+        # Feature normalization parameters (C3)
+        self.scaler_mean = scaler_mean
+        self.scaler_scale = scaler_scale
+
+        # Initialize PyTorch CPU model & load scaler if saved
         if model is not None:
             self.model = model
         else:
             self.model = ProductionDNN(input_dim=7, hidden_units=[64, 32])
             if Path(model_path).exists():
-                weights = torch.load(model_path, map_location="cpu")
-                self.model.load_state_dict(weights)
+                checkpoint = torch.load(model_path, map_location="cpu")
+                if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                    self.model.load_state_dict(checkpoint["state_dict"])
+                    if (
+                        self.scaler_mean is None
+                        and "scaler_mean" in checkpoint
+                    ):
+                        self.scaler_mean = checkpoint["scaler_mean"]
+                    if (
+                        self.scaler_scale is None
+                        and "scaler_scale" in checkpoint
+                    ):
+                        self.scaler_scale = checkpoint["scaler_scale"]
+                elif isinstance(checkpoint, dict):
+                    self.model.load_state_dict(checkpoint)
         self.model.eval()
 
         self._init_db()
@@ -112,15 +135,20 @@ class ZMQTradingClient:
         with self.conn:
             self.conn.execute(sql_tick, (timestamp, symbol, price))
 
-        if len(self.prices) < 25 or self.halted:
+        # Require at least 22 prices (20-vol window + 2)
+        if len(self.prices) < 22 or self.halted:
             return
 
-        p_arr = np.array(self.prices[-25:])
-        rets = np.diff(np.log(p_arr))
-        lag_features = rets[-5:][::-1]
-        vol_20 = np.std(rets[-20:])
-        mom_10 = np.mean(rets[-10:])
-        feat_vector = np.concatenate([lag_features, [vol_20, mom_10]])
+        # Canonical unified feature extraction (C2)
+        feat_vector = build_feature_vector(
+            self.prices[-25:], lags=5, vol_window=20, mom_window=10
+        )
+
+        # Standardize features using training distribution (C3)
+        if self.scaler_mean is not None and self.scaler_scale is not None:
+            feat_vector = (
+                feat_vector - self.scaler_mean
+            ) / self.scaler_scale
 
         x_t = torch.tensor(feat_vector, dtype=torch.float32).unsqueeze(0)
         with torch.no_grad():
@@ -154,6 +182,7 @@ class ZMQTradingClient:
                     sql_ord, (timestamp, symbol, side, units, price, cost)
                 )
 
+        # Mark to market & Drawdown check (H1)
         self.nav = self.cash + (self.position * self.units_per_trade * price)
         if self.nav > self.peak_nav:
             self.peak_nav = self.nav

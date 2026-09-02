@@ -18,6 +18,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
+from src.data import build_feature_vector
+
 
 @dataclass
 class MarketTick:
@@ -140,12 +142,13 @@ class RiskGuardrail:
     def __init__(
         self,
         max_drawdown_limit: float = 0.15,
-        max_position_units: int = 1000
+        max_position_units: int = 1000,
+        initial_capital: float = 100_000.0
     ):
         self.max_drawdown_limit = max_drawdown_limit
         self.max_position_units = max_position_units
         self.is_halted = False
-        self.peak_nav = 0.0
+        self.peak_nav = initial_capital
 
     def check(self, current_nav: float) -> bool:
         if current_nav > self.peak_nav:
@@ -169,6 +172,8 @@ class LiveTradingSimulation:
         self,
         model: nn.Module,
         feature_dim: int = 5,
+        scaler_mean: np.ndarray | None = None,
+        scaler_scale: np.ndarray | None = None,
         initial_cash: float = 100_000.0,
         upper_threshold: float = 0.55,
         lower_threshold: float = 0.45,
@@ -177,6 +182,8 @@ class LiveTradingSimulation:
     ):
         self.model = model.eval()
         self.feature_dim = feature_dim
+        self.scaler_mean = scaler_mean
+        self.scaler_scale = scaler_scale
         self.cash = initial_cash
         self.nav = initial_cash
         self.position = 0
@@ -184,24 +191,37 @@ class LiveTradingSimulation:
         self.lower_threshold = lower_threshold
         self.tc_rate = tc_rate
         self.db = SQLitePersistence(db_path)
-        self.risk = RiskGuardrail()
+        self.risk = RiskGuardrail(initial_capital=initial_cash)
         self.price_history: list[float] = []
 
     def on_tick(self, tick: MarketTick) -> None:
         self.db.save_tick(tick)
         self.price_history.append(tick.price)
 
-        if len(self.price_history) <= self.feature_dim + 1:
+        # Mark NAV to market before check
+        self.nav = self.cash + (self.position * 100 * tick.price)
+
+        if len(self.price_history) < 22 or self.risk.is_halted:
             return
 
         if not self.risk.check(self.nav):
             return
 
-        prices = np.array(self.price_history[-(self.feature_dim + 2):])
-        log_rets = np.diff(np.log(prices))
-        features = log_rets[-self.feature_dim:][::-1]
+        # Canonical unified feature extraction (C2)
+        feat_vector = build_feature_vector(
+            self.price_history[-25:], lags=self.feature_dim,
+            vol_window=20, mom_window=10
+        )
 
-        feat_tensor = torch.tensor(features, dtype=torch.float32).unsqueeze(0)
+        # Standardize features (C3)
+        if self.scaler_mean is not None and self.scaler_scale is not None:
+            feat_vector = (
+                feat_vector - self.scaler_mean
+            ) / self.scaler_scale
+
+        feat_tensor = torch.tensor(
+            feat_vector, dtype=torch.float32
+        ).unsqueeze(0)
         with torch.no_grad():
             prob = torch.sigmoid(self.model(feat_tensor)).item()
 

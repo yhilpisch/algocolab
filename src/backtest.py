@@ -16,20 +16,30 @@ def run_vectorized_backtest(
     returns: pd.Series,
     positions: pd.Series,
     tc: float = 0.0005,  # 5 bps transaction cost per turnover
-    periods_per_year: int = 252
+    periods_per_year: int = 252,
+    lag_positions: bool = False
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     r"""Execute a vectorized backtest with transaction costs.
+
+    Convention:
+      - `returns` at index t represents the log-return realized during bar t
+        (from close t-1 to close t).
+      - `positions` at index t represents the position held during bar t.
+      - If `lag_positions=True`, `positions` is shifted by 1 bar to convert
+        bar-end signals into next-bar holding positions.
 
     Parameters
     ----------
     returns : pd.Series
         Asset log-returns $r_t = \ln(P_t / P_{t-1})$.
     positions : pd.Series
-        Target positions $p_t \in \{-1, 0, 1\}$ (lagged to avoid lookahead).
+        Target positions $p_t \in \{-1, 0, 1\}$.
     tc : float
         Proportional transaction cost per unit turnover.
     periods_per_year : int
         Annualization factor (252 for daily trading).
+    lag_positions : bool
+        If True, shifts positions by 1 bar: $p_t = s_{t-1}$.
 
     Returns
     -------
@@ -40,24 +50,34 @@ def run_vectorized_backtest(
     """
     df = pd.DataFrame(index=returns.index)
     df["market_return"] = returns
-    df["position"] = positions
+
+    if lag_positions:
+        df["position"] = positions.shift(1).fillna(0.0)
+    else:
+        df["position"] = positions
+
+    # Gross strategy return = active position * realized market return
     df["strategy_gross"] = df["position"] * df["market_return"]
 
+    # Turnover / switches (measured on actual position vector)
     df["trades"] = (
         df["position"].diff().abs().fillna(df["position"].abs())
     )
     df["cost"] = df["trades"] * tc
     df["strategy_net"] = df["strategy_gross"] - df["cost"]
 
+    # Compounded cumulative equity curves
     df["creturns_market"] = np.exp(df["market_return"].cumsum())
     df["creturns_gross"] = np.exp(df["strategy_gross"].cumsum())
     df["creturns_net"] = np.exp(df["strategy_net"].cumsum())
 
+    # Running maximum and drawdown series
     cum_net = df["creturns_net"]
     running_max = cum_net.cummax()
     drawdown = (cum_net - running_max) / running_max
     df["drawdown"] = drawdown
 
+    # Annualized metrics
     total_days = len(df)
     years = max(total_days / periods_per_year, 0.01)
 
@@ -71,12 +91,12 @@ def run_vectorized_backtest(
     sharpe_net = (ann_ret_net / vol_net) if vol_net > 0 else 0.0
 
     max_dd = drawdown.min()
-    total_trades = int(df["trades"].sum())
-    non_zero_trades = (df["strategy_gross"] != 0).sum()
-    if non_zero_trades > 0:
-        hit_ratio = (df["strategy_gross"] > 0).sum() / non_zero_trades
+    total_switches = int(df["trades"].sum())
+    non_zero_bars = (df["strategy_gross"] != 0).sum()
+    if non_zero_bars > 0:
+        bar_win_rate = (df["strategy_gross"] > 0).sum() / non_zero_bars
     else:
-        hit_ratio = 0.0
+        bar_win_rate = 0.0
 
     metrics = {
         "Annualized Market Return": ann_ret_market,
@@ -85,8 +105,8 @@ def run_vectorized_backtest(
         "Sharpe Ratio (Market)": sharpe_market,
         "Sharpe Ratio (Strategy Net)": sharpe_net,
         "Maximum Drawdown": max_dd,
-        "Total Trades": total_trades,
-        "Hit Ratio": hit_ratio,
+        "Position Switches (Turnover Count)": total_switches,
+        "Bar Win Rate (Gross)": bar_win_rate,
     }
 
     return df, metrics
