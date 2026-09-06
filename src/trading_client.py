@@ -80,7 +80,13 @@ class ZMQTradingClient:
         else:
             self.model = ProductionDNN(input_dim=7, hidden_units=[64, 32])
             if Path(model_path).exists():
-                checkpoint = torch.load(model_path, map_location="cpu")
+                try:
+                    checkpoint = torch.load(
+                        model_path, map_location="cpu", weights_only=False
+                    )
+                except TypeError:
+                    checkpoint = torch.load(model_path, map_location="cpu")
+
                 if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
                     self.model.load_state_dict(checkpoint["state_dict"])
                     if (
@@ -88,11 +94,15 @@ class ZMQTradingClient:
                         and "scaler_mean" in checkpoint
                     ):
                         self.scaler_mean = checkpoint["scaler_mean"]
+                        if isinstance(self.scaler_mean, torch.Tensor):
+                            self.scaler_mean = self.scaler_mean.numpy()
                     if (
                         self.scaler_scale is None
                         and "scaler_scale" in checkpoint
                     ):
                         self.scaler_scale = checkpoint["scaler_scale"]
+                        if isinstance(self.scaler_scale, torch.Tensor):
+                            self.scaler_scale = self.scaler_scale.numpy()
                 elif isinstance(checkpoint, dict):
                     self.model.load_state_dict(checkpoint)
         self.model.eval()
