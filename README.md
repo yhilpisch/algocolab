@@ -105,9 +105,19 @@ Historical daily price data is available in `data/eod_data.csv` and also served 
 
 ---
 
+## ⚠️ Disclaimer
+
+The material, code, and notebooks in this repository are provided **for educational, informational, and personal research purposes only**. They do not constitute financial, investment, legal, or professional advice, nor do they represent an offer or solicitation to buy or sell any security, financial instrument, or trading strategy.
+
+Past performance, whether simulated, backtested, or real, is no guarantee of future results. Algorithmic trading and financial market investments carry substantial risk, including the possible loss of principal capital. You are solely responsible for evaluating the merits and risks associated with any decisions made based on this software or material.
+
+---
+
 ## ⚖️ Copyright & License
 
 All materials and code are protected by copyright.
 
-**(c) Dr. Yves J. Hilpisch | The Python Quants GmbH**  
+&copy; Dr. Yves J. Hilpisch | The Python Quants GmbH  
 Website: [https://tpq.io](https://tpq.io) | [https://hilpisch.com](https://hilpisch.com)
+
+This code is licensed for **personal, non-commercial use only**. No part of this repository may be reproduced, republished, or utilized in commercial products, services, or paid training without prior written permission from **The Python Quants GmbH**.
