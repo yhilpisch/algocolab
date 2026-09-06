@@ -32,9 +32,9 @@ Each notebook is completely self-contained and pre-configured to run directly in
 
 | Session | Topic | Key Concepts | Colab Link |
 | :--- | :--- | :--- | :--- |
-| **Session 1** | **Can Markets Be Predicted?** | EMH benchmark, random walk null model (GBM), return autocorrelation, Ljung-Box test, linear OLS signal model, vectorized backtesting with transaction costs. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yveshilpisch/pyalgo/blob/main/notebooks/01_can_markets_be_predicted.ipynb) |
-| **Session 2** | **Teaching a Neural Network to Trade** | Colab GPU tensor acceleration, quantitative feature engineering, multi-layer `TradingDNN` in PyTorch, cross-entropy vs economic Sharpe, confidence thresholding, model capacity analysis. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yveshilpisch/pyalgo/blob/main/notebooks/02_deep_learning_gpu_trading.ipynb) |
-| **Session 3** | **From Notebook to Trading System** | Lightweight CPU inference, real-time ZeroMQ streaming market simulator (`PUB`/`SUB`), transactional SQLite persistence, automated drawdown circuit breakers, live telemetry dashboard. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yveshilpisch/pyalgo/blob/main/notebooks/03_cloud_deployment_monitoring.ipynb) |
+| **Session 1** | **Can Markets Be Predicted?** | EMH benchmark, random walk null model (GBM), return autocorrelation, Ljung-Box test, linear OLS signal model, vectorized backtesting with transaction costs. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yhilpisch/algocolab/blob/main/notebooks/01_can_markets_be_predicted.ipynb) |
+| **Session 2** | **Teaching a Neural Network to Trade** | Colab GPU tensor acceleration, quantitative feature engineering, multi-layer `TradingDNN` in PyTorch, cross-entropy vs economic Sharpe, confidence thresholding, model capacity analysis. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yhilpisch/algocolab/blob/main/notebooks/02_deep_learning_gpu_trading.ipynb) |
+| **Session 3** | **From Notebook to Trading System** | Lightweight CPU inference, real-time ZeroMQ streaming market simulator (`PUB`/`SUB`), transactional SQLite persistence, automated drawdown circuit breakers, live telemetry dashboard. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yhilpisch/algocolab/blob/main/notebooks/03_cloud_deployment_monitoring.ipynb) |
 
 ---
 
@@ -68,8 +68,8 @@ If running locally instead of Google Colab:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yveshilpisch/pyalgo.git
-cd pyalgo
+git clone https://github.com/yhilpisch/algocolab.git
+cd algocolab
 ```
 
 ### 2. Set Up Virtual Environment & Dependencies
