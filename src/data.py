@@ -17,7 +17,7 @@ DEFAULT_DATA_URL = "https://hilpisch.com/eod_data.csv"
 
 def load_eod_data(
     source: str | Path = DEFAULT_DATA_URL,
-    symbol: str = "SPY",
+    symbol: str = "EURUSD",
     date_col: str = "Date"
 ) -> pd.Series:
     """Load end-of-day price series for a single symbol.
@@ -27,7 +27,7 @@ def load_eod_data(
     source : str or Path
         Local file path or remote URL.
     symbol : str
-        Column name for asset (e.g. 'SPY', 'EURUSD', 'BTC-USD', 'AAPL').
+        Column name for asset (e.g. 'EURUSD', 'SPY', 'BTC-USD', 'AAPL').
     date_col : str
         Name of the date index column.
 

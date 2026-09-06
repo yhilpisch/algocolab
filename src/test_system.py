@@ -112,8 +112,8 @@ def test_live_simulation_with_scaler():
     # Feed 30 synthetic ticks
     price = 100.0
     for i in range(30):
-        price += np.random.normal(0, 0.2)
-        sim.on_tick(MarketTick(f"2025-01-01T10:00:{i:02d}", "SPY", price))
+        price += np.random.normal(0, 0.001)
+        sim.on_tick(MarketTick(f"2025-01-01T10:00:{i:02d}", "EURUSD", price))
 
     assert len(sim.price_history) == 30
     assert sim.nav > 0

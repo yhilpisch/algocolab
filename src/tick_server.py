@@ -16,10 +16,10 @@ import zmq
 
 def run_tick_server(
     bind_addr: str = "tcp://127.0.0.1:5555",
-    symbol: str = "SPY",
-    start_price: float = 450.0,
+    symbol: str = "EURUSD",
+    start_price: float = 1.1000,
     dt: float = 0.05,
-    sigma: float = 0.0005,
+    sigma: float = 0.0002,
     max_ticks: int | None = None
 ) -> None:
     """Publish financial market ticks as JSON on a ZeroMQ PUB socket."""

@@ -142,7 +142,7 @@ class RiskGuardrail:
     def __init__(
         self,
         max_drawdown_limit: float = 0.15,
-        max_position_units: int = 1000,
+        max_position_units: int = 100_000,
         initial_capital: float = 100_000.0
     ):
         self.max_drawdown_limit = max_drawdown_limit
@@ -199,7 +199,7 @@ class LiveTradingSimulation:
         self.price_history.append(tick.price)
 
         # Mark NAV to market before check
-        self.nav = self.cash + (self.position * 100 * tick.price)
+        self.nav = self.cash + (self.position * 10_000 * tick.price)
 
         if len(self.price_history) < 22 or self.risk.is_halted:
             return
@@ -236,17 +236,17 @@ class LiveTradingSimulation:
 
         pos_delta = target_pos - self.position
         if pos_delta != 0:
-            units = abs(pos_delta) * 100
+            units = abs(pos_delta) * 10_000
             side = "BUY" if pos_delta > 0 else "SELL"
             trade_cost = units * tick.price * self.tc_rate
-            self.cash -= (pos_delta * 100 * tick.price + trade_cost)
+            self.cash -= (pos_delta * 10_000 * tick.price + trade_cost)
             self.position = target_pos
             self.db.save_order(
                 tick.timestamp, tick.symbol, side,
                 units, tick.price, trade_cost
             )
 
-        self.nav = self.cash + (self.position * 100 * tick.price)
+        self.nav = self.cash + (self.position * 10_000 * tick.price)
         peak = self.risk.peak_nav
         drawdown = ((peak - self.nav) / peak) if peak > 0 else 0.0
         self.db.save_state(

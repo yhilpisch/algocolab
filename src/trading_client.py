@@ -63,7 +63,7 @@ class ZMQTradingClient:
         self.nav = initial_capital
         self.peak_nav = initial_capital
         self.position = 0
-        self.units_per_trade = 100
+        self.units_per_trade = 10_000
         self.max_dd_limit = max_drawdown_limit
         self.tc_rate = tc_rate
         self.halted = False
@@ -257,7 +257,7 @@ class ZMQTradingClient:
                     p_val = tick['price']
                     print(
                         f"[{t_str}] Ticks: {count:03d} | "
-                        f"Price: {p_val:.2f} | "
+                        f"Price: {p_val:.4f} | "
                         f"Pos: {self.position:+d} | "
                         f"NAV: ${self.nav:,.2f}"
                     )
