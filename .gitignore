@@ -19,7 +19,6 @@ venv/
 *.db-journal
 
 # Temporary Checkpoints
-best_trading_dnn.pt
 *.pth
 
 # OS Metadata

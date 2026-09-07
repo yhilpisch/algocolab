@@ -6,7 +6,6 @@
 [![The Python Quants](https://img.shields.io/badge/The%20Python%20Quants-tpq.io-002D5A.svg)](https://tpq.io)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C.svg?logo=pytorch)](https://pytorch.org/)
-[![ZeroMQ](https://img.shields.io/badge/ZeroMQ-pyzmq-orange.svg)](https://zeromq.org/)
 [![License: Proprietary](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey.svg)](https://tpq.io)
 
 <p align="center">
@@ -19,10 +18,10 @@
 
 This repository contains the complete companion code and interactive Jupyter notebooks for the three-part webinar series on **Algorithmic Trading with Python and Google Colab**, presented by **Dr. Yves J. Hilpisch** ([The Python Quants GmbH](https://tpq.io)).
 
-The curriculum bridges quantitative finance theory and scalable cloud execution across three core pillars:
+The curriculum bridges quantitative finance theory and auditable paper-trading across three core pillars:
 **Discover** (Hypothesis testing & EMH) →
 ightarrow→ **Learn** (GPU deep learning with PyTorch) →
-ightarrow→ **Deploy** (ZeroMQ streaming, SQLite persistence & operational risk).
+ightarrow→ **Replay** (SQLite persistence, operational risk & reconciliation).
 
 ---
 
@@ -52,10 +51,11 @@ Each notebook is completely self-contained and pre-configured to run directly in
 │   ├── data.py                         # Historical data loader & lagged feature engine
 │   ├── models.py                       # PyTorch TradingDNN & training loop
 │   ├── backtest.py                     # Vectorized backtester & performance analytics
-│   ├── engine.py                       # Live simulation engine & risk guardrails
-│   ├── tick_server.py                  # ZeroMQ PUB socket streaming market ticks
-│   ├── tick_database.py                # ZeroMQ SUB client logging ticks to SQLite
-│   └── trading_client.py               # ZeroMQ SUB real-time trading engine
+│   ├── artifacts.py                    # Checksummed Drive run bundles
+│   ├── config.py                       # Shared experiment configuration
+│   ├── session1.py                     # Session 1 experiment orchestration
+│   ├── session2.py                     # Session 2 model/evaluation orchestration
+│   └── session3.py                     # Session 3 replay orchestration
 └── data/                               # Sample datasets
     └── eod_data.csv                    # Historical EOD prices (SPY, EURUSD, BTC, etc.)
 ```
@@ -80,21 +80,10 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Running Live Streaming Simulation
-In terminal 1 (start ZeroMQ tick server):
-```bash
-python src/tick_server.py
-```
-
-In terminal 2 (start database recorder):
-```bash
-python src/tick_database.py
-```
-
-In terminal 3 (start live trading client):
-```bash
-python -m src.trading_client
-```
+### 3. Running the Session Replay
+Run the participant notebooks in order. Session 1 creates the Drive run
+bundle, Session 2 adds the model contract, and Session 3 performs the
+auditable paper-trading replay.
 
 ---
 
