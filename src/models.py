@@ -8,6 +8,7 @@ https://hilpisch.com
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -224,6 +225,7 @@ def train_trading_model(
         "val_acc": []
     }
     best_val_loss = float("inf")
+    best_state_dict: dict[str, torch.Tensor] | None = None
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -273,7 +275,11 @@ def train_trading_model(
 
             if val_loss < best_val_loss and save_path is not None:
                 best_val_loss = val_loss
+                best_state_dict = deepcopy(model.state_dict())
                 torch.save(model.state_dict(), save_path)
+            elif val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_state_dict = deepcopy(model.state_dict())
 
         if verbose and (epoch % 10 == 0 or epoch == 1 or epoch == epochs):
             val_str = ""
@@ -287,5 +293,8 @@ def train_trading_model(
                 f"Train Loss: {train_loss:.4f} - "
                 f"Train Acc: {train_acc:.2%}{val_str}"
             )
+
+    if best_state_dict is not None:
+        model.load_state_dict(best_state_dict)
 
     return history
