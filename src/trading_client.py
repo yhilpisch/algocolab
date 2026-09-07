@@ -1,5 +1,9 @@
 """
-ZeroMQ SUB trading client performing real-time inference & order management.
+Legacy ZeroMQ SUB client for optional real-time inference examples.
+
+This module is not the canonical Session 3 risk contract. Its drawdown halt
+behavior is retained for transport demonstrations; the authoritative
+flatten-then-halt behavior lives in ``src.session3.PaperReplay``.
 
 (c) Dr. Yves J. Hilpisch
 The Python Quants GmbH | https://tpq.io

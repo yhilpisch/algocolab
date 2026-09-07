@@ -84,7 +84,7 @@ class TradingDNN(nn.Module):
     def __init__(
         self,
         input_dim: int,
-        hidden_units: list[int] = [64, 32],
+        hidden_units: tuple[int, ...] = (64, 32),
         dropout_rate: float = 0.2,
         use_batch_norm: bool = True
     ):

@@ -1,5 +1,11 @@
 """
-Streaming execution engine, SQLite persistence, and risk management.
+Legacy streaming execution example, SQLite persistence, and risk management.
+
+This module is optional transport-era teaching code. It does not implement the
+canonical Session 3 flatten-then-halt replay contract; use ``src.session3``
+for the authoritative paper-trading behavior. Here ``feature_dim`` means the
+number of lagged returns, while the resulting feature vector is wider by two
+features for volatility and momentum.
 
 (c) Dr. Yves J. Hilpisch
 The Python Quants GmbH | https://tpq.io
