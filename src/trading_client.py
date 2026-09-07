@@ -15,28 +15,9 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 
+from src.config import FX_COST_ONE_WAY
 from src.data import build_feature_vector
-
-
-class ProductionDNN(nn.Module):
-    def __init__(
-        self,
-        input_dim: int = 7,
-        hidden_units: list[int] = [64, 32]
-    ):
-        super().__init__()
-        layers = []
-        prev = input_dim
-        for h in hidden_units:
-            layers.append(nn.Linear(prev, h))
-            layers.append(nn.BatchNorm1d(h))
-            layers.append(nn.ReLU())
-            prev = h
-        layers.append(nn.Linear(prev, 1))
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+from src.models import load_model_checkpoint
 
 
 class ZMQTradingClient:
@@ -52,9 +33,10 @@ class ZMQTradingClient:
         model_path: str = "best_trading_dnn.pt",
         scaler_mean: np.ndarray | None = None,
         scaler_scale: np.ndarray | None = None,
+        threshold: float | None = None,
         initial_capital: float = 100_000.0,
         max_drawdown_limit: float = 0.10,
-        tc_rate: float = 0.0005,
+        tc_rate: float = FX_COST_ONE_WAY,
         db_path: str = "webinar_live_trading.db"
     ):
         self.connect_addr = connect_addr
@@ -70,41 +52,30 @@ class ZMQTradingClient:
         self.prices: list[float] = []
         self.timestamps: list[str] = []
 
-        # Feature normalization parameters (C3)
-        self.scaler_mean = scaler_mean
-        self.scaler_scale = scaler_scale
-
-        # Initialize PyTorch CPU model & load scaler if saved
         if model is not None:
             self.model = model
+            self.scaler_mean = scaler_mean
+            self.scaler_scale = scaler_scale
+            self.threshold = threshold
+            self.feature_lags = 5
         else:
-            self.model = ProductionDNN(input_dim=7, hidden_units=[64, 32])
-            if Path(model_path).exists():
-                try:
-                    checkpoint = torch.load(
-                        model_path, map_location="cpu", weights_only=False
-                    )
-                except TypeError:
-                    checkpoint = torch.load(model_path, map_location="cpu")
-
-                if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-                    self.model.load_state_dict(checkpoint["state_dict"])
-                    if (
-                        self.scaler_mean is None
-                        and "scaler_mean" in checkpoint
-                    ):
-                        self.scaler_mean = checkpoint["scaler_mean"]
-                        if isinstance(self.scaler_mean, torch.Tensor):
-                            self.scaler_mean = self.scaler_mean.numpy()
-                    if (
-                        self.scaler_scale is None
-                        and "scaler_scale" in checkpoint
-                    ):
-                        self.scaler_scale = checkpoint["scaler_scale"]
-                        if isinstance(self.scaler_scale, torch.Tensor):
-                            self.scaler_scale = self.scaler_scale.numpy()
-                elif isinstance(checkpoint, dict):
-                    self.model.load_state_dict(checkpoint)
+            checkpoint_path = Path(model_path)
+            if not checkpoint_path.is_file():
+                raise FileNotFoundError(
+                    f"Required model checkpoint not found: {checkpoint_path}"
+                )
+            self.model, payload = load_model_checkpoint(checkpoint_path)
+            self.scaler_mean = payload["scaler_mean"].numpy()
+            self.scaler_scale = payload["scaler_scale"].numpy()
+            self.threshold = float(payload["threshold"])
+            self.feature_lags = sum(
+                name.startswith("lag_")
+                for name in payload["feature_names"]
+            )
+        if self.scaler_mean is None or self.scaler_scale is None:
+            raise ValueError("A fitted training scaler is required.")
+        if self.threshold is None or not 0.5 <= self.threshold < 1.0:
+            raise ValueError("A valid symmetric threshold is required.")
         self.model.eval()
 
         self._init_db()
@@ -151,7 +122,10 @@ class ZMQTradingClient:
 
         # Canonical unified feature extraction (C2)
         feat_vector = build_feature_vector(
-            self.prices[-25:], lags=5, vol_window=20, mom_window=10
+            self.prices[-25:],
+            lags=self.feature_lags,
+            vol_window=20,
+            mom_window=10,
         )
 
         # Standardize features using training distribution (C3)
@@ -164,7 +138,12 @@ class ZMQTradingClient:
         with torch.no_grad():
             prob = torch.sigmoid(self.model(x_t)).item()
 
-        target_pos = 1 if prob > 0.52 else (-1 if prob < 0.48 else 0)
+        lower_threshold = 1.0 - self.threshold
+        target_pos = (
+            1
+            if prob > self.threshold
+            else (-1 if prob < lower_threshold else 0)
+        )
 
         sql_sig = (
             "INSERT INTO signals (timestamp, symbol, prob_up, signal) "

@@ -11,11 +11,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.config import FX_COST_ONE_WAY
+
 
 def run_vectorized_backtest(
     returns: pd.Series,
     positions: pd.Series,
-    tc: float = 0.0005,  # 5 bps transaction cost per turnover
+    tc: float = FX_COST_ONE_WAY,
     periods_per_year: int = 252,
     lag_positions: bool = False
 ) -> tuple[pd.DataFrame, dict[str, float]]:
@@ -35,7 +37,8 @@ def run_vectorized_backtest(
     positions : pd.Series
         Target positions $p_t \in \{-1, 0, 1\}$.
     tc : float
-        Proportional transaction cost per unit turnover.
+        One-way proportional cost per unit turnover. A direct reversal has
+        turnover of two and therefore incurs twice this cost.
     periods_per_year : int
         Annualization factor (252 for daily trading).
     lag_positions : bool

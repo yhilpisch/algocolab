@@ -18,6 +18,7 @@ import torch
 
 from src.data import create_lagged_features, build_feature_vector
 from src.backtest import run_vectorized_backtest
+from src.config import FX_COST_ONE_WAY
 from src.engine import RiskGuardrail, LiveTradingSimulation, MarketTick
 from src.models import TradingDNN
 
@@ -77,7 +78,7 @@ def test_backtest_lag_and_metrics():
 
     # Unlagged test
     df_unlagged, m_unlagged = run_vectorized_backtest(
-        rets, signals, tc=0.0005, lag_positions=False
+        rets, signals, tc=FX_COST_ONE_WAY, lag_positions=False
     )
     assert "Position Switches (Turnover Count)" in m_unlagged
     assert "Bar Win Rate (Gross)" in m_unlagged
@@ -85,7 +86,7 @@ def test_backtest_lag_and_metrics():
 
     # Lagged test (positions shifted by 1)
     df_lagged, m_lagged = run_vectorized_backtest(
-        rets, signals, tc=0.0005, lag_positions=True
+        rets, signals, tc=FX_COST_ONE_WAY, lag_positions=True
     )
     assert df_lagged["position"].iloc[0] == 0.0
     assert df_lagged["position"].iloc[1] == 1.0

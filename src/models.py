@@ -8,13 +8,42 @@ https://hilpisch.com
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import pandas as pd
-from pathlib import Path
+from torch.utils.data import DataLoader, Dataset
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Serializable architecture specification for a trading network."""
+
+    input_dim: int
+    hidden_units: tuple[int, ...] = (64, 32)
+    dropout_rate: float = 0.2
+    use_batch_norm: bool = True
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe configuration mapping."""
+        payload = asdict(self)
+        payload["hidden_units"] = list(self.hidden_units)
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ModelConfig":
+        """Construct a model specification from serialized values."""
+        return cls(
+            input_dim=int(payload["input_dim"]),
+            hidden_units=tuple(payload["hidden_units"]),
+            dropout_rate=float(payload["dropout_rate"]),
+            use_batch_norm=bool(payload["use_batch_norm"]),
+        )
 
 
 def get_device() -> torch.device:
@@ -83,6 +112,86 @@ class TradingDNN(nn.Module):
         with torch.no_grad():
             logits = self.forward(x)
             return torch.sigmoid(logits)
+
+
+def build_model(config: ModelConfig) -> TradingDNN:
+    """Build exactly the architecture described by a model specification."""
+    return TradingDNN(
+        input_dim=config.input_dim,
+        hidden_units=list(config.hidden_units),
+        dropout_rate=config.dropout_rate,
+        use_batch_norm=config.use_batch_norm,
+    )
+
+
+def save_model_checkpoint(
+    path: str | Path,
+    model: TradingDNN,
+    config: ModelConfig,
+    feature_names: list[str],
+    scaler_mean: np.ndarray,
+    scaler_scale: np.ndarray,
+    threshold: float,
+    run_id: str,
+) -> Path:
+    """Atomically save the complete inference contract."""
+    if len(feature_names) != config.input_dim:
+        raise ValueError("Feature count does not match model input dimension.")
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    payload = {
+        "format_version": "1.0",
+        "run_id": run_id,
+        "model_config": config.as_dict(),
+        "feature_names": feature_names,
+        "scaler_mean": torch.as_tensor(
+            np.asarray(scaler_mean, dtype=np.float32)
+        ),
+        "scaler_scale": torch.as_tensor(
+            np.asarray(scaler_scale, dtype=np.float32)
+        ),
+        "threshold": float(threshold),
+        "state_dict": model.state_dict(),
+    }
+    torch.save(payload, temporary)
+    temporary.replace(destination)
+    return destination
+
+
+def load_model_checkpoint(
+    path: str | Path,
+    device: torch.device | str = "cpu",
+) -> tuple[TradingDNN, dict[str, Any]]:
+    """Load and validate a complete inference contract."""
+    try:
+        payload = torch.load(
+            path,
+            map_location=device,
+            weights_only=True,
+        )
+    except TypeError:
+        payload = torch.load(path, map_location=device)
+    required = {
+        "format_version",
+        "run_id",
+        "model_config",
+        "feature_names",
+        "scaler_mean",
+        "scaler_scale",
+        "threshold",
+        "state_dict",
+    }
+    missing = required.difference(payload)
+    if missing:
+        raise ValueError(f"Checkpoint fields missing: {sorted(missing)}")
+    config = ModelConfig.from_dict(payload["model_config"])
+    if len(payload["feature_names"]) != config.input_dim:
+        raise ValueError("Checkpoint feature contract is inconsistent.")
+    model = build_model(config).to(device)
+    model.load_state_dict(payload["state_dict"])
+    model.eval()
+    return model, payload
 
 
 def train_trading_model(

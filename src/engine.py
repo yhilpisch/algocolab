@@ -18,6 +18,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
+from src.config import FX_COST_ONE_WAY
+
 from src.data import build_feature_vector
 
 
@@ -177,7 +179,7 @@ class LiveTradingSimulation:
         initial_cash: float = 100_000.0,
         upper_threshold: float = 0.55,
         lower_threshold: float = 0.45,
-        tc_rate: float = 0.0005,
+        tc_rate: float = FX_COST_ONE_WAY,
         db_path: str = "trading_system.db"
     ):
         self.model = model.eval()
