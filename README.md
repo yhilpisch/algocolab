@@ -18,10 +18,10 @@
 
 This repository contains the complete companion code and interactive Jupyter notebooks for the three-part webinar series on **Algorithmic Trading with Python and Google Colab**, presented by **Dr. Yves J. Hilpisch** ([The Python Quants GmbH](https://tpq.io)).
 
-The curriculum bridges quantitative finance theory and auditable paper-trading across three core pillars:
-**Discover** (Hypothesis testing & EMH) →
-ightarrow→ **Learn** (GPU deep learning with PyTorch) →
-ightarrow→ **Replay** (SQLite persistence, operational risk & reconciliation).
+The curriculum bridges quantitative finance theory and auditable paper-trading
+across three core pillars: **Discover** (hypothesis testing and EMH) →
+**Learn** (GPU deep learning with PyTorch) → **Replay** (SQLite persistence,
+operational risk, and reconciliation).
 
 ---
 
@@ -44,6 +44,7 @@ Each notebook is completely self-contained and pre-configured to run directly in
 ├── README.md                           # Repository documentation & Colab access
 ├── requirements.txt                    # Core scientific & deep learning libraries
 ├── notebooks/                          # Standalone Jupyter Notebooks
+│   ├── 00_colab_introduction.ipynb
 │   ├── 01_can_markets_be_predicted.ipynb
 │   ├── 02_deep_learning_gpu_trading.ipynb
 │   └── 03_cloud_deployment_monitoring.ipynb
@@ -81,15 +82,15 @@ pip install -r requirements.txt
 ```
 
 ### 3. Running the Session Replay
-Run the participant notebooks in order. Session 1 creates the Drive run
-bundle, Session 2 adds the model contract, and Session 3 performs the
+Run the participant notebooks in order. In Colab, Session 1 creates the Drive
+run bundle, Session 2 adds the model contract, and Session 3 performs the
 auditable paper-trading replay.
 
 ---
 
 ## 📊 Dataset
 
-Historical daily price data is available in `data/eod_data.csv` and also served dynamically from:
+The bundled `data/eod_data.csv` is the frozen teaching snapshot. Its source is:
 - `https://hilpisch.com/eod_data.csv`
 
 ---
