@@ -26,8 +26,9 @@ from src.models import (
     TradingDNN,
     TradingDataset,
     build_model,
+    ensemble_predict_proba,
     get_device,
-    save_model_checkpoint,
+    save_ensemble_checkpoint,
     train_trading_model,
 )
 
@@ -36,13 +37,16 @@ from src.models import (
 class SessionTwoResults:
     """Artifacts produced by the canonical Session 2 experiment."""
 
-    model: TradingDNN
+    models: list[TradingDNN]
+    seeds: tuple[int, ...]
     model_config: ModelConfig
     feature_names: list[str]
     scaler_mean: np.ndarray
     scaler_scale: np.ndarray
     threshold: float
     history: pd.DataFrame
+    member_history: pd.DataFrame
+    seed_metrics: pd.DataFrame
     threshold_results: pd.DataFrame
     strategy_metrics: pd.DataFrame
     predictions: pd.DataFrame
@@ -88,6 +92,21 @@ def _probabilities(
     return pd.Series(values, index=features.index, name="probability_up")
 
 
+def _ensemble_probabilities(
+    models: list[TradingDNN],
+    features: pd.DataFrame,
+    device: torch.device,
+) -> pd.Series:
+    """Average member probabilities for one chronological sample."""
+    tensor = torch.tensor(
+        features.to_numpy(),
+        dtype=torch.float32,
+        device=device,
+    )
+    values = ensemble_predict_proba(models, tensor).cpu().numpy().ravel()
+    return pd.Series(values, index=features.index, name="probability_up")
+
+
 def _threshold_positions(
     probabilities: pd.Series,
     threshold: float,
@@ -123,6 +142,35 @@ def _metric_row(
     }
 
 
+def _select_threshold(
+    probabilities: pd.Series,
+    returns: pd.Series,
+    thresholds: tuple[float, ...],
+    config: ExperimentConfig,
+    strategy: str,
+) -> tuple[float, pd.DataFrame]:
+    """Select one threshold by validation net Sharpe only."""
+    rows = []
+    for threshold in thresholds:
+        positions = _threshold_positions(probabilities, threshold)
+        row = _metric_row(
+            strategy,
+            "validation",
+            returns,
+            positions,
+            config,
+        )
+        row["threshold"] = threshold
+        row["active_fraction"] = float((positions != 0.0).mean())
+        rows.append(row)
+    frame = pd.DataFrame(rows)
+    selected = frame.sort_values(
+        ["net_sharpe", "threshold"],
+        ascending=[False, True],
+    ).iloc[0]
+    return float(selected["threshold"]), frame
+
+
 def run_session_two(
     data_path: str | Path,
     config: ExperimentConfig | None = None,
@@ -131,13 +179,25 @@ def run_session_two(
     thresholds: tuple[float, ...] = (0.50, 0.52, 0.55),
     hidden_units: tuple[int, ...] = (64, 32),
     dropout_rate: float = 0.2,
+    ensemble_members: int | None = None,
     device: torch.device | None = None,
 ) -> SessionTwoResults:
-    """Train on train, select on validation, and evaluate test once."""
+    """Train an ensemble, select on validation, and evaluate test once."""
     active_config = config or ExperimentConfig()
     active_config.validate()
-    torch.manual_seed(active_config.random_seed)
-    np.random.seed(active_config.random_seed)
+    member_count = (
+        active_config.ensemble_members
+        if ensemble_members is None
+        else ensemble_members
+    )
+    if member_count < 1:
+        raise ValueError("The ensemble must contain at least one member.")
+    seeds = tuple(
+        range(
+            active_config.random_seed,
+            active_config.random_seed + member_count,
+        )
+    )
     active_device = device or get_device()
 
     prices = load_eod_data(data_path, symbol=active_config.symbol)
@@ -182,49 +242,86 @@ def run_session_two(
         hidden_units=hidden_units,
         dropout_rate=dropout_rate,
     )
-    model = build_model(model_config)
-    history = train_trading_model(
-        model,
-        train_loader,
-        validation_loader,
-        epochs=epochs,
-        device=active_device,
-        verbose=False,
-    )
-    history_frame = pd.DataFrame(history)
+    models = []
+    histories = []
+    member_probabilities = {"validation": [], "test": []}
+    seed_rows = []
+    for member, seed in enumerate(seeds, start=1):
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        model = build_model(model_config)
+        history = train_trading_model(
+            model,
+            train_loader,
+            validation_loader,
+            epochs=epochs,
+            device=active_device,
+            verbose=False,
+        )
+        member_frame = pd.DataFrame(history)
+        member_frame.insert(0, "epoch", range(1, len(member_frame) + 1))
+        member_frame.insert(0, "seed", seed)
+        member_frame.insert(0, "member", member)
+        histories.append(member_frame)
+        validation_probability = _probabilities(
+            model,
+            x_validation_scaled,
+            active_device,
+        )
+        test_probability = _probabilities(
+            model,
+            x_test_scaled,
+            active_device,
+        )
+        member_probabilities["validation"].append(validation_probability)
+        member_probabilities["test"].append(test_probability)
+        member_threshold, _ = _select_threshold(
+            validation_probability,
+            r_validation,
+            thresholds,
+            active_config,
+            "DNN Member",
+        )
+        for sample, returns, probability in (
+            ("validation", r_validation, validation_probability),
+            ("test", r_test, test_probability),
+        ):
+            positions = _threshold_positions(probability, member_threshold)
+            row = _metric_row(
+                "DNN Member",
+                sample,
+                returns,
+                positions,
+                active_config,
+            )
+            row["member"] = member
+            row["seed"] = seed
+            row["threshold"] = member_threshold
+            row["active_fraction"] = float((positions != 0.0).mean())
+            seed_rows.append(row)
+        models.append(model)
 
-    validation_probabilities = _probabilities(
-        model,
+    member_history = pd.concat(histories, ignore_index=True)
+    history_frame = member_history.groupby("epoch", as_index=False)[
+        ["train_loss", "val_loss", "train_acc", "val_acc"]
+    ].mean()
+    validation_probabilities = _ensemble_probabilities(
+        models,
         x_validation_scaled,
         active_device,
     )
-    threshold_rows = []
-    for threshold in thresholds:
-        positions = _threshold_positions(
-            validation_probabilities,
-            threshold,
-        )
-        row = _metric_row(
-            "DNN",
-            "validation",
-            r_validation,
-            positions,
-            active_config,
-        )
-        row["threshold"] = threshold
-        row["active_fraction"] = float((positions != 0.0).mean())
-        threshold_rows.append(row)
-    threshold_results = pd.DataFrame(threshold_rows)
-    selected = threshold_results.sort_values(
-        ["net_sharpe", "threshold"],
-        ascending=[False, True],
-    ).iloc[0]
-    selected_threshold = float(selected["threshold"])
-
-    test_probabilities = _probabilities(
-        model,
+    test_probabilities = _ensemble_probabilities(
+        models,
         x_test_scaled,
         active_device,
+    )
+    selected_threshold, threshold_results = _select_threshold(
+        validation_probabilities,
+        r_validation,
+        thresholds,
+        active_config,
+        "DNN Ensemble",
     )
     probabilities = {
         "validation": validation_probabilities,
@@ -254,7 +351,7 @@ def run_session_two(
             selected_threshold,
         )
         positions = {
-            "DNN": dnn_position,
+            "DNN Ensemble": dnn_position,
             "OLS": pd.Series(
                 np.sign(ols.predict(sample_scaled)),
                 index=sample_returns.index,
@@ -281,6 +378,9 @@ def run_session_two(
                 "sample": sample,
                 "target_return": sample_returns,
                 "probability_up": probabilities[sample],
+                "probability_std": pd.concat(
+                    member_probabilities[sample], axis=1
+                ).std(axis=1, ddof=0),
                 "dnn_position": dnn_position,
                 "ols_position": positions["OLS"],
                 "momentum_position": positions["Momentum"],
@@ -290,13 +390,16 @@ def run_session_two(
         prediction_frames.append(predictions)
 
     return SessionTwoResults(
-        model=model,
+        models=models,
+        seeds=seeds,
         model_config=model_config,
         feature_names=list(features.columns),
         scaler_mean=scaler_mean,
         scaler_scale=scaler_scale,
         threshold=selected_threshold,
         history=history_frame,
+        member_history=member_history,
+        seed_metrics=pd.DataFrame(seed_rows),
         threshold_results=threshold_results,
         strategy_metrics=pd.DataFrame(metric_rows),
         predictions=pd.concat(prediction_frames).sort_index(),
@@ -312,10 +415,11 @@ def persist_session_two(
     bundle.validate(required_session=1)
     if 2 in bundle.manifest.get("completed_sessions", []):
         raise ValueError("Session 2 is already complete for this run.")
-    checkpoint_path = bundle.path / "session_2/model.pt"
-    save_model_checkpoint(
+    checkpoint_path = bundle.path / "session_2/ensemble.pt"
+    save_ensemble_checkpoint(
         checkpoint_path,
-        results.model,
+        results.models,
+        results.seeds,
         results.model_config,
         results.feature_names,
         results.scaler_mean,
@@ -323,7 +427,7 @@ def persist_session_two(
         results.threshold,
         bundle.run_id,
     )
-    bundle.register_file("session_2/model.pt")
+    bundle.register_file("session_2/ensemble.pt")
     bundle.write_json(
         "session_2/model_config.json",
         results.model_config.as_dict(),
@@ -338,10 +442,18 @@ def persist_session_two(
     )
     bundle.write_json(
         "session_2/selection.json",
-        {"threshold": results.threshold, "selected_on": "validation"},
+        {
+            "aggregation": "mean_probability",
+            "ensemble_members": len(results.models),
+            "seeds": list(results.seeds),
+            "threshold": results.threshold,
+            "selected_on": "validation",
+        },
     )
     frames = {
         "session_2/training_history.csv": results.history,
+        "session_2/member_training_history.csv": results.member_history,
+        "session_2/seed_metrics.csv": results.seed_metrics,
         "session_2/threshold_results.csv": results.threshold_results,
         "session_2/strategy_metrics.csv": results.strategy_metrics,
         "session_2/predictions.csv": results.predictions.reset_index(),
@@ -349,7 +461,7 @@ def persist_session_two(
     for name, frame in frames.items():
         bundle.write_frame(name, frame)
     required = (
-        "session_2/model.pt",
+        "session_2/ensemble.pt",
         "session_2/model_config.json",
         "session_2/scaler.json",
         "session_2/selection.json",

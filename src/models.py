@@ -195,6 +195,106 @@ def load_model_checkpoint(
     return model, payload
 
 
+def save_ensemble_checkpoint(
+    path: str | Path,
+    models: list[TradingDNN],
+    seeds: tuple[int, ...],
+    config: ModelConfig,
+    feature_names: list[str],
+    scaler_mean: np.ndarray,
+    scaler_scale: np.ndarray,
+    threshold: float,
+    run_id: str,
+) -> Path:
+    """Atomically save a probability-averaging ensemble contract."""
+    if not models:
+        raise ValueError("An ensemble must contain at least one model.")
+    if len(models) != len(seeds):
+        raise ValueError("Every ensemble member must have one seed.")
+    if len(feature_names) != config.input_dim:
+        raise ValueError("Feature count does not match model input dimension.")
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    payload = {
+        "format_version": "2.0",
+        "run_id": run_id,
+        "model_config": config.as_dict(),
+        "feature_names": feature_names,
+        "scaler_mean": torch.as_tensor(
+            np.asarray(scaler_mean, dtype=np.float32)
+        ),
+        "scaler_scale": torch.as_tensor(
+            np.asarray(scaler_scale, dtype=np.float32)
+        ),
+        "threshold": float(threshold),
+        "aggregation": "mean_probability",
+        "seeds": list(seeds),
+        "state_dicts": [model.state_dict() for model in models],
+    }
+    torch.save(payload, temporary)
+    temporary.replace(destination)
+    return destination
+
+
+def load_ensemble_checkpoint(
+    path: str | Path,
+    device: torch.device | str = "cpu",
+) -> tuple[list[TradingDNN], dict[str, Any]]:
+    """Load and validate a probability-averaging ensemble contract."""
+    try:
+        payload = torch.load(
+            path,
+            map_location=device,
+            weights_only=True,
+        )
+    except TypeError:
+        payload = torch.load(path, map_location=device)
+    required = {
+        "format_version",
+        "run_id",
+        "model_config",
+        "feature_names",
+        "scaler_mean",
+        "scaler_scale",
+        "threshold",
+        "aggregation",
+        "seeds",
+        "state_dicts",
+    }
+    missing = required.difference(payload)
+    if missing:
+        raise ValueError(f"Ensemble fields missing: {sorted(missing)}")
+    if payload["aggregation"] != "mean_probability":
+        raise ValueError("Unsupported ensemble aggregation rule.")
+    if not payload["state_dicts"]:
+        raise ValueError("The ensemble checkpoint has no members.")
+    if len(payload["seeds"]) != len(payload["state_dicts"]):
+        raise ValueError("Ensemble seeds and state dictionaries differ.")
+    config = ModelConfig.from_dict(payload["model_config"])
+    if len(payload["feature_names"]) != config.input_dim:
+        raise ValueError("Checkpoint feature contract is inconsistent.")
+    models = []
+    for state_dict in payload["state_dicts"]:
+        model = build_model(config).to(device)
+        model.load_state_dict(state_dict)
+        model.eval()
+        models.append(model)
+    return models, payload
+
+
+def ensemble_predict_proba(
+    models: list[TradingDNN],
+    features: torch.Tensor,
+) -> torch.Tensor:
+    """Average member probabilities for one feature tensor."""
+    if not models:
+        raise ValueError("An ensemble must contain at least one model.")
+    with torch.no_grad():
+        probabilities = [model.predict_proba(features) for model in models]
+    return torch.stack(probabilities).mean(dim=0)
+
+
 def train_trading_model(
     model: nn.Module,
     train_loader: DataLoader,

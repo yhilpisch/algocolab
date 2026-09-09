@@ -83,7 +83,7 @@ pip install -r requirements.txt
 
 ### 3. Running the Session Replay
 Run the participant notebooks in order. In Colab, Session 1 creates the Drive
-run bundle, Session 2 adds the model contract, and Session 3 performs the
+run bundle, Session 2 adds the ensemble contract, and Session 3 performs the
 auditable paper-trading replay.
 
 ---

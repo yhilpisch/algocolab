@@ -30,7 +30,8 @@ class ExperimentConfig:
     periods_per_year: int = 252
     transaction_cost_one_way: float = FX_COST_ONE_WAY
     control_seed: int = 1
-    random_seed: int = 46
+    random_seed: int = 42
+    ensemble_members: int = 20
     schema_version: str = "1.0"
 
     def as_dict(self) -> dict[str, Any]:
@@ -51,3 +52,5 @@ class ExperimentConfig:
             raise ValueError("Training and validation must leave a test set.")
         if self.transaction_cost_one_way < 0.0:
             raise ValueError("Transaction costs cannot be negative.")
+        if self.ensemble_members < 1:
+            raise ValueError("The ensemble must contain at least one member.")

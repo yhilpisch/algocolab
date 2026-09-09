@@ -25,7 +25,7 @@ from src.data import (
     create_lagged_features,
     load_eod_data,
 )
-from src.models import load_model_checkpoint
+from src.models import ensemble_predict_proba, load_ensemble_checkpoint
 
 
 @dataclass
@@ -294,8 +294,8 @@ def run_session_three(
     """Validate the model contract and execute the test-period replay."""
     bundle.validate(required_session=2)
     config = ExperimentConfig(**bundle.manifest["configuration"])
-    model, payload = load_model_checkpoint(
-        bundle.path / "session_2/model.pt"
+    models, payload = load_ensemble_checkpoint(
+        bundle.path / "session_2/ensemble.pt"
     )
     if payload["run_id"] != bundle.run_id:
         raise ValueError("Checkpoint run ID does not match the bundle.")
@@ -308,9 +308,10 @@ def run_session_three(
     batch_values = (features.to_numpy() - mean) / scale
     batch_tensor = torch.tensor(batch_values, dtype=torch.float32)
     with torch.no_grad():
-        batch_probability = (
-            torch.sigmoid(model(batch_tensor)).numpy().ravel()
-        )
+        batch_probability = ensemble_predict_proba(
+            models,
+            batch_tensor,
+        ).numpy().ravel()
 
     stream_features = []
     for timestamp in features.index:
@@ -327,9 +328,10 @@ def run_session_three(
     stream_values = (np.asarray(stream_features) - mean) / scale
     stream_tensor = torch.tensor(stream_values, dtype=torch.float32)
     with torch.no_grad():
-        stream_probability = (
-            torch.sigmoid(model(stream_tensor)).numpy().ravel()
-        )
+        stream_probability = ensemble_predict_proba(
+            models,
+            stream_tensor,
+        ).numpy().ravel()
     threshold = float(payload["threshold"])
     positions = np.where(
         stream_probability > threshold,
