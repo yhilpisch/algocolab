@@ -40,6 +40,18 @@ class SessionThreeResults:
     reconciliation: dict[str, float | int | bool | str]
 
 
+def probabilities_to_positions(
+    probabilities: np.ndarray,
+    threshold: float,
+) -> np.ndarray:
+    """Apply the persisted symmetric decision rule to probabilities."""
+    return np.where(
+        probabilities >= threshold,
+        1,
+        np.where(probabilities < 1.0 - threshold, -1, 0),
+    )
+
+
 def validate_observation(
     previous_time: pd.Timestamp,
     current_time: pd.Timestamp,
@@ -333,10 +345,9 @@ def run_session_three(
             stream_tensor,
         ).numpy().ravel()
     threshold = float(payload["threshold"])
-    positions = np.where(
-        stream_probability > threshold,
-        1,
-        np.where(stream_probability < 1.0 - threshold, -1, 0),
+    positions = probabilities_to_positions(
+        stream_probability,
+        threshold,
     )
     saved = pd.read_csv(
         bundle.path / "session_2/predictions.csv",
