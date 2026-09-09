@@ -16,6 +16,7 @@ import pandas as pd
 import torch
 from sklearn.linear_model import LinearRegression
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from src.artifacts import RunBundle
 from src.backtest import run_vectorized_backtest
@@ -182,6 +183,7 @@ def run_session_two(
     use_batch_norm: bool | None = None,
     ensemble_members: int | None = None,
     device: torch.device | None = None,
+    show_progress: bool = False,
 ) -> SessionTwoResults:
     """Train an ensemble, select on validation, and evaluate test once."""
     active_config = config or ExperimentConfig()
@@ -267,7 +269,13 @@ def run_session_two(
     histories = []
     member_probabilities = {"validation": [], "test": []}
     seed_rows = []
-    for member, seed in enumerate(seeds, start=1):
+    seed_iterator = tqdm(
+        seeds,
+        desc="Training ensemble",
+        disable=not show_progress,
+        unit="member",
+    )
+    for member, seed in enumerate(seed_iterator, start=1):
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
