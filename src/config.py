@@ -32,6 +32,9 @@ class ExperimentConfig:
     control_seed: int = 1
     random_seed: int = 42
     ensemble_members: int = 20
+    training_epochs: int = 500
+    training_batch_size: int | None = None
+    use_batch_norm: bool = False
     schema_version: str = "1.0"
 
     def as_dict(self) -> dict[str, Any]:
@@ -54,3 +57,10 @@ class ExperimentConfig:
             raise ValueError("Transaction costs cannot be negative.")
         if self.ensemble_members < 1:
             raise ValueError("The ensemble must contain at least one member.")
+        if self.training_epochs < 1:
+            raise ValueError("The training epoch count must be positive.")
+        if (
+            self.training_batch_size is not None
+            and self.training_batch_size < 1
+        ):
+            raise ValueError("The training batch size must be positive.")

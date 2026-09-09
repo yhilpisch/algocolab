@@ -174,11 +174,12 @@ def _select_threshold(
 def run_session_two(
     data_path: str | Path,
     config: ExperimentConfig | None = None,
-    epochs: int = 20,
-    batch_size: int = 64,
+    epochs: int | None = None,
+    batch_size: int | None = None,
     thresholds: tuple[float, ...] = (0.50, 0.52, 0.55),
     hidden_units: tuple[int, ...] = (64, 32),
     dropout_rate: float = 0.2,
+    use_batch_norm: bool | None = None,
     ensemble_members: int | None = None,
     device: torch.device | None = None,
 ) -> SessionTwoResults:
@@ -192,6 +193,11 @@ def run_session_two(
     )
     if member_count < 1:
         raise ValueError("The ensemble must contain at least one member.")
+    epoch_count = (
+        active_config.training_epochs if epochs is None else epochs
+    )
+    if epoch_count < 1:
+        raise ValueError("The training epoch count must be positive.")
     seeds = tuple(
         range(
             active_config.random_seed,
@@ -227,20 +233,35 @@ def run_session_two(
         scaler_scale,
     ) = _standardize(x_train, x_validation, x_test)
 
+    configured_batch_size = (
+        active_config.training_batch_size
+        if batch_size is None
+        else batch_size
+    )
+    if configured_batch_size is not None and configured_batch_size < 1:
+        raise ValueError("The training batch size must be positive.")
+    effective_batch_size = configured_batch_size or len(x_train_scaled)
+
     train_loader = DataLoader(
         TradingDataset(x_train_scaled, y_train),
-        batch_size=batch_size,
+        batch_size=effective_batch_size,
         shuffle=False,
     )
     validation_loader = DataLoader(
         TradingDataset(x_validation_scaled, y_validation),
-        batch_size=batch_size,
+        batch_size=len(x_validation_scaled),
         shuffle=False,
+    )
+    batch_norm = (
+        active_config.use_batch_norm
+        if use_batch_norm is None
+        else use_batch_norm
     )
     model_config = ModelConfig(
         input_dim=x_train_scaled.shape[1],
         hidden_units=hidden_units,
         dropout_rate=dropout_rate,
+        use_batch_norm=batch_norm,
     )
     models = []
     histories = []
@@ -255,7 +276,7 @@ def run_session_two(
             model,
             train_loader,
             validation_loader,
-            epochs=epochs,
+            epochs=epoch_count,
             device=active_device,
             verbose=False,
         )

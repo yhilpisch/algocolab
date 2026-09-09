@@ -28,7 +28,7 @@ class ModelConfig:
     input_dim: int
     hidden_units: tuple[int, ...] = (64, 32)
     dropout_rate: float = 0.2
-    use_batch_norm: bool = True
+    use_batch_norm: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-safe configuration mapping."""
@@ -86,7 +86,7 @@ class TradingDNN(nn.Module):
         input_dim: int,
         hidden_units: tuple[int, ...] = (64, 32),
         dropout_rate: float = 0.2,
-        use_batch_norm: bool = True
+        use_batch_norm: bool = False
     ):
         super().__init__()
         layers: list[nn.Module] = []
