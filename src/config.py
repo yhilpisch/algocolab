@@ -30,7 +30,7 @@ class ExperimentConfig:
     periods_per_year: int = 252
     transaction_cost_one_way: float = FX_COST_ONE_WAY
     control_seed: int = 1
-    random_seed: int = 42
+    random_seed: int = 46
     schema_version: str = "1.0"
 
     def as_dict(self) -> dict[str, Any]:
