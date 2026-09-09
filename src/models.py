@@ -304,8 +304,10 @@ def train_trading_model(
     weight_decay: float = 1e-4,
     device: torch.device | None = None,
     save_path: str | Path | None = None,
-    verbose: bool = True
-) -> dict[str, list[float]]:
+    verbose: bool = True,
+    early_stopping_patience: int | None = None,
+    early_stopping_min_delta: float = 0.0,
+) -> dict[str, list[float] | list[int]]:
     """Train PyTorch trading model with binary cross entropy with logits."""
     if device is None:
         device = get_device()
@@ -326,6 +328,8 @@ def train_trading_model(
     }
     best_val_loss = float("inf")
     best_state_dict: dict[str, torch.Tensor] | None = None
+    best_epoch = 0
+    epochs_without_improvement = 0
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -373,13 +377,22 @@ def train_trading_model(
             history["val_loss"].append(val_loss)
             history["val_acc"].append(val_acc)
 
-            if val_loss < best_val_loss and save_path is not None:
+            improved = (
+                val_loss < best_val_loss - early_stopping_min_delta
+            )
+            if improved and save_path is not None:
                 best_val_loss = val_loss
+                best_epoch = epoch
+                epochs_without_improvement = 0
                 best_state_dict = deepcopy(model.state_dict())
                 torch.save(model.state_dict(), save_path)
-            elif val_loss < best_val_loss:
+            elif improved:
                 best_val_loss = val_loss
+                best_epoch = epoch
+                epochs_without_improvement = 0
                 best_state_dict = deepcopy(model.state_dict())
+            else:
+                epochs_without_improvement += 1
 
         if verbose and (epoch % 10 == 0 or epoch == 1 or epoch == epochs):
             val_str = ""
@@ -394,7 +407,18 @@ def train_trading_model(
                 f"Train Acc: {train_acc:.2%}{val_str}"
             )
 
+        if (
+            val_loader is not None
+            and early_stopping_patience is not None
+            and epochs_without_improvement >= early_stopping_patience
+        ):
+            break
+
     if best_state_dict is not None:
         model.load_state_dict(best_state_dict)
+
+    epochs_trained = len(history["train_loss"])
+    history["best_epoch"] = [best_epoch] * epochs_trained
+    history["epochs_trained"] = [epochs_trained] * epochs_trained
 
     return history

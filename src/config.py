@@ -32,9 +32,12 @@ class ExperimentConfig:
     control_seed: int = 1
     random_seed: int = 42
     ensemble_members: int = 20
-    training_epochs: int = 500
+    training_epochs: int = 100
     training_batch_size: int | None = None
     use_batch_norm: bool = False
+    early_stopping_patience: int = 10
+    early_stopping_min_delta: float = 1e-4
+    deployment_threshold: float = 0.50
     schema_version: str = "1.0"
 
     def as_dict(self) -> dict[str, Any]:
@@ -59,6 +62,12 @@ class ExperimentConfig:
             raise ValueError("The ensemble must contain at least one member.")
         if self.training_epochs < 1:
             raise ValueError("The training epoch count must be positive.")
+        if self.early_stopping_patience < 1:
+            raise ValueError("Early-stopping patience must be positive.")
+        if self.early_stopping_min_delta < 0.0:
+            raise ValueError("Early-stopping minimum improvement is negative.")
+        if not 0.50 <= self.deployment_threshold < 1.0:
+            raise ValueError("The deployment threshold must be in [0.50, 1.0).")
         if (
             self.training_batch_size is not None
             and self.training_batch_size < 1
