@@ -167,12 +167,10 @@ def run_session_two(
         scaler_scale,
     ) = _standardize(x_train, x_validation, x_test)
 
-    generator = torch.Generator().manual_seed(active_config.random_seed)
     train_loader = DataLoader(
         TradingDataset(x_train_scaled, y_train),
         batch_size=batch_size,
-        shuffle=True,
-        generator=generator,
+        shuffle=False,
     )
     validation_loader = DataLoader(
         TradingDataset(x_validation_scaled, y_validation),
