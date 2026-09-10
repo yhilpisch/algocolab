@@ -45,6 +45,7 @@ class SessionTwoResults:
     feature_names: list[str]
     scaler_mean: np.ndarray
     scaler_scale: np.ndarray
+    training_device: str
     threshold: float
     history: pd.DataFrame
     member_history: pd.DataFrame
@@ -144,6 +145,85 @@ def _metric_row(
         "maximum_drawdown": metrics["Maximum Drawdown"],
         "turnover_units": metrics["Position Switches (Turnover Count)"],
     }
+
+
+def execution_timing_sensitivity(
+    predictions: pd.DataFrame,
+    config: ExperimentConfig,
+    sample: str = "test",
+) -> pd.DataFrame:
+    """Compare immediate-close and one-bar-delayed execution."""
+    frame = predictions.query("sample == @sample").copy()
+    positions = {
+        "DNN Ensemble": frame["dnn_position"],
+        "OLS": frame["ols_position"],
+    }
+    rows = []
+    for strategy, position in positions.items():
+        for timing, delayed in (
+            ("Immediate close", False),
+            ("One-bar delay", True),
+        ):
+            _, metrics = run_vectorized_backtest(
+                frame["target_return"],
+                position,
+                tc=config.transaction_cost_one_way,
+                periods_per_year=config.periods_per_year,
+                lag_positions=delayed,
+            )
+            rows.append(
+                {
+                    "strategy": strategy,
+                    "timing": timing,
+                    "net_annual_return": metrics[
+                        "Annualized Strategy Net Return"
+                    ],
+                    "return_volatility_ratio": metrics[
+                        "Sharpe Ratio (Strategy Net)"
+                    ],
+                    "maximum_drawdown": metrics["Maximum Drawdown"],
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def random_baseline_distribution(
+    predictions: pd.DataFrame,
+    config: ExperimentConfig,
+    simulations: int = 1_000,
+    seed: int | None = None,
+    sample: str = "test",
+) -> pd.DataFrame:
+    """Summarize many predeclared random long/short control paths."""
+    if simulations < 2:
+        raise ValueError("Random diagnostics require at least two paths.")
+    frame = predictions.query("sample == @sample").copy()
+    active_seed = config.control_seed if seed is None else seed
+    generator = np.random.default_rng(active_seed)
+    rows = []
+    for simulation in range(simulations):
+        position = pd.Series(
+            generator.choice([-1.0, 1.0], len(frame)),
+            index=frame.index,
+        )
+        _, metrics = run_vectorized_backtest(
+            frame["target_return"],
+            position,
+            tc=config.transaction_cost_one_way,
+            periods_per_year=config.periods_per_year,
+        )
+        rows.append(
+            {
+                "simulation": simulation,
+                "net_annual_return": metrics[
+                    "Annualized Strategy Net Return"
+                ],
+                "return_volatility_ratio": metrics[
+                    "Sharpe Ratio (Strategy Net)"
+                ],
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def _evaluate_thresholds(
@@ -470,6 +550,7 @@ def run_session_two(
         feature_names=list(features.columns),
         scaler_mean=scaler_mean,
         scaler_scale=scaler_scale,
+        training_device=active_device.type,
         threshold=selected_threshold,
         history=history_frame,
         member_history=member_history,
@@ -523,6 +604,7 @@ def persist_session_two(
             "ensemble_members": len(results.models),
             "seeds": list(results.seeds),
             "threshold": results.threshold,
+            "training_device": results.training_device,
             "selected_on": "predeclared",
             "threshold_analysis": "validation_sensitivity_only",
         },
